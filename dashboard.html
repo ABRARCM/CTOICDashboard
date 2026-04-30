@@ -121,6 +121,7 @@ tr.row-untouched { background:#ffe0e0 !important; }
 .action-select { font-family:'Poppins',sans-serif; font-size:11px; padding:3px 6px; border:1px solid #ccc; border-radius:4px; width:100%; }
 .remarks-input { font-family:'Poppins',sans-serif; font-size:11px; padding:3px 6px; border:1px solid #ccc; border-radius:4px; width:100%; min-width:130px; }
 .remarks-input.has-text { border-color:#0077B6; background:#f0f8ff; }
+.prev-worked-badge { display:inline-block; font-size:9px; font-weight:600; background:#0077B6; color:#fff; padding:1px 5px; border-radius:3px; margin-bottom:2px; letter-spacing:.3px; }
 
 .badge { display:inline-block; padding:2px 7px; border-radius:10px; font-size:10px; font-weight:600; color:#fff; }
 .badge-120 { background:#FF6B6B; }
@@ -252,6 +253,12 @@ tr.row-untouched { background:#ffe0e0 !important; }
     <option value="inprogress">In Progress</option>
     <option value="">Not Set</option>
   </select>
+  <label>History:</label>
+  <select id="fHistory">
+    <option value="all">All Claims</option>
+    <option value="touched">Previously Worked</option>
+    <option value="untouched">Never Worked</option>
+  </select>
   <label>Search:</label>
   <input type="text" id="fSearch" placeholder="Patient ID or claim#">
   <button class="btn" onclick="applyFilters()">Filter</button>
@@ -337,6 +344,7 @@ async function switchMonth(monthKey) {
   document.getElementById('fCarrier').innerHTML = '<option value="all">All Carriers</option>';
   document.getElementById('fAssignee').value = 'all';
   document.getElementById('fWorked').value = 'all';
+  document.getElementById('fHistory').value = 'all';
   document.getElementById('fSearch').value = '';
   buildFilterOptions();
   buildThead();
@@ -458,11 +466,16 @@ function updateProgressBar() {
   document.getElementById('progFillInprogress').style.width = pctI.toFixed(1)+'%';
   document.getElementById('progPctInprogress').textContent = pctI >= 2 ? Math.round(pctI)+'%' : '';
 
+  let prevWorked = 0;
+  recs.forEach(r => {
+    if(fbWorked[r.id]||fbActions[r.id]||fbRemarks[r.id]||fbAssignees[r.id]) prevWorked++;
+  });
   document.getElementById('progressStats').innerHTML = `
     <span class="progress-stat"><span class="progress-dot dot-completed"></span> <b>${completed}</b> Completed (Paid)</span>
     <span class="progress-stat"><span class="progress-dot dot-inprogress"></span> <b>${inprogress}</b> In Progress</span>
     <span class="progress-stat"><span class="progress-dot dot-remaining"></span> <b>${remaining}</b> Not Started</span>
     <span class="progress-stat">| <b>${total}</b> Total Claims</span>
+    <span class="progress-stat" style="color:#0077B6">| <b>${prevWorked}</b> Previously Worked</span>
   `;
 }
 
@@ -590,6 +603,8 @@ function applyFilters() {
   const worked=document.getElementById('fWorked').value;
   const search=document.getElementById('fSearch').value.toLowerCase().trim();
 
+  const history=document.getElementById('fHistory').value;
+
   filtered=DATA.filter(r=>{
     if(includeCarriers.size>0&&!includeCarriers.has(r.carrier))return false;
     if(excludeCarriers.has(r.carrier))return false;
@@ -598,6 +613,11 @@ function applyFilters() {
     if(carrier!=='all'&&r.carrier!==carrier)return false;
     if(assignee!=='all'){const a=fbAssignees[r.id]||'';if(assignee===''&&a!=='')return false;if(assignee!==''&&a!==assignee)return false;}
     if(worked!=='all'){const w=fbWorked[r.id]||'';if(worked===''&&w!=='')return false;if(worked!==''&&w!==worked)return false;}
+    if(history!=='all'){
+      const hasWork=!!(fbWorked[r.id]||fbActions[r.id]||fbRemarks[r.id]||fbAssignees[r.id]);
+      if(history==='touched'&&!hasWork)return false;
+      if(history==='untouched'&&hasWork)return false;
+    }
     if(search){const s=`${r.patNum} ${r.id} ${r.carrier}`.toLowerCase();if(!s.includes(search))return false;}
     return true;
   });
@@ -613,7 +633,7 @@ function applyFilters() {
 function resetFilters(){
   document.getElementById('fAging').value='all';document.getElementById('fClinic').value='all';
   document.getElementById('fCarrier').value='all';document.getElementById('fAssignee').value='all';document.getElementById('fWorked').value='all';
-  document.getElementById('fSearch').value='';
+  document.getElementById('fHistory').value='all';document.getElementById('fSearch').value='';
   includeCarriers.clear();excludeCarriers.clear();
   document.getElementById('includeSearch').value='';document.getElementById('excludeSearch').value='';
   renderCarrierList('include');renderCarrierList('exclude');
@@ -649,7 +669,8 @@ function renderTable() {
       <td><select class="action-select" data-id="${r.id}" onchange="saveAssignee(this)">
         ${['','AR','MB','NM','CS'].map(a=>`<option value="${a}"${(fbAssignees[r.id]||'')===a?' selected':''}>${a||'\\u2014'}</option>`).join('')}
       </select></td>
-      <td><select class="worked-select ${wClass}" data-id="${r.id}" onchange="saveWorked(this)">
+      <td>${(wVal||aVal||rmVal||(fbAssignees[r.id]||''))?'<div class="prev-worked-badge">PREV WORKED</div>':''}
+      <select class="worked-select ${wClass}" data-id="${r.id}" onchange="saveWorked(this)">
         <option value=""${wVal===''?' selected':''}>-- Select --</option>
         <option value="completed"${wVal==='completed'?' selected':''}>Completed (Paid)</option>
         <option value="inprogress"${wVal==='inprogress'?' selected':''}>In Progress</option>
@@ -698,10 +719,11 @@ function goPage(p){currentPage=p;renderTable();window.scrollTo({top:document.que
 
 // ===== Export =====
 function exportCSV(){
-  const headers=['Aging','Days','PatientID','DOS','Carrier','Office','InsEst','Billed','LastTracked','TrackingNote','AssignedTo','Status','ActionTaken','Remarks'];
+  const headers=['Aging','Days','PatientID','DOS','Carrier','Office','InsEst','Billed','LastTracked','TrackingNote','AssignedTo','Status','ActionTaken','Remarks','PreviouslyWorked'];
   let csv=headers.join(',')+String.fromCharCode(10);
   filtered.forEach(r=>{
-    const row=[r.agingBucket,r.daysOut,r.patNum,r.dos,'"'+r.carrier+'"',r.clinic,r.insPayEst,r.billedFee,r.trackDate,'"'+r.trackNote.replace(/"/g,'""')+'"',fbAssignees[r.id]||'',fbWorked[r.id]||'','"'+(fbActions[r.id]||'').replace(/"/g,'""')+'"','"'+(fbRemarks[r.id]||'').replace(/"/g,'""')+'"'];
+    const pw=!!(fbWorked[r.id]||fbActions[r.id]||fbRemarks[r.id]||fbAssignees[r.id])?'Yes':'No';
+    const row=[r.agingBucket,r.daysOut,r.patNum,r.dos,'"'+r.carrier+'"',r.clinic,r.insPayEst,r.billedFee,r.trackDate,'"'+r.trackNote.replace(/"/g,'""')+'"',fbAssignees[r.id]||'',fbWorked[r.id]||'','"'+(fbActions[r.id]||'').replace(/"/g,'""')+'"','"'+(fbRemarks[r.id]||'').replace(/"/g,'""')+'"',pw];
     csv+=row.join(',')+String.fromCharCode(10);
   });
   const blob=new Blob([csv],{type:'text/csv'});const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='CT_OIC_WorkLog_'+new Date().toISOString().slice(0,10)+'.csv';a.click();
