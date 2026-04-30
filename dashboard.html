@@ -121,7 +121,46 @@ tr.row-untouched { background:#ffe0e0 !important; }
 .action-select { font-family:'Poppins',sans-serif; font-size:11px; padding:3px 6px; border:1px solid #ccc; border-radius:4px; width:100%; }
 .remarks-input { font-family:'Poppins',sans-serif; font-size:11px; padding:3px 6px; border:1px solid #ccc; border-radius:4px; width:100%; min-width:130px; }
 .remarks-input.has-text { border-color:#0077B6; background:#f0f8ff; }
-.prev-worked-badge { display:inline-block; font-size:9px; font-weight:600; background:#0077B6; color:#fff; padding:1px 5px; border-radius:3px; margin-bottom:2px; letter-spacing:.3px; }
+.prev-worked-badge { display:inline-block; font-size:9px; font-weight:600; background:#0077B6; color:#fff; padding:1px 5px; border-radius:3px; margin-bottom:2px; letter-spacing:.3px; cursor:pointer; transition:background .2s; }
+.prev-worked-badge:hover { background:#023E8A; }
+
+/* History Modal */
+.history-overlay { position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,.5); z-index:10000; display:flex; align-items:center; justify-content:center; }
+.history-modal { background:#fff; border-radius:14px; width:620px; max-width:92vw; max-height:85vh; overflow:hidden; box-shadow:0 8px 32px rgba(0,0,0,.25); display:flex; flex-direction:column; }
+.history-modal-header { background:linear-gradient(135deg,#023E8A,#0077B6); color:#fff; padding:16px 20px; display:flex; align-items:center; justify-content:space-between; }
+.history-modal-header h3 { font-size:16px; font-weight:600; }
+.history-modal-close { background:none; border:none; color:#fff; font-size:22px; cursor:pointer; padding:0 4px; opacity:.8; }
+.history-modal-close:hover { opacity:1; }
+.history-modal-body { padding:20px; overflow-y:auto; flex:1; }
+.history-claim-info { display:grid; grid-template-columns:1fr 1fr; gap:8px 16px; margin-bottom:18px; padding-bottom:14px; border-bottom:2px solid #eef2f7; }
+.history-claim-info .hci-item { font-size:12px; }
+.history-claim-info .hci-label { color:#888; font-size:10px; text-transform:uppercase; letter-spacing:.5px; }
+.history-claim-info .hci-value { font-weight:600; color:#1a1a2e; margin-top:1px; }
+.history-current { margin-bottom:18px; padding-bottom:14px; border-bottom:2px solid #eef2f7; }
+.history-current h4 { font-size:13px; font-weight:600; color:#023E8A; margin-bottom:8px; }
+.history-current-grid { display:grid; grid-template-columns:1fr 1fr; gap:6px 14px; }
+.history-current-grid .hc-item { font-size:12px; padding:6px 10px; background:#f0f8ff; border-radius:6px; }
+.history-current-grid .hc-label { color:#666; font-size:10px; text-transform:uppercase; }
+.history-current-grid .hc-val { font-weight:600; color:#1a1a2e; margin-top:2px; }
+.history-timeline { }
+.history-timeline h4 { font-size:13px; font-weight:600; color:#023E8A; margin-bottom:10px; }
+.history-timeline-empty { font-size:12px; color:#999; font-style:italic; padding:10px 0; }
+.ht-entry { display:flex; gap:12px; margin-bottom:10px; position:relative; }
+.ht-dot-col { display:flex; flex-direction:column; align-items:center; width:14px; flex-shrink:0; }
+.ht-dot { width:10px; height:10px; border-radius:50%; background:#0077B6; flex-shrink:0; margin-top:3px; }
+.ht-line { width:2px; flex:1; background:#dce4ed; margin-top:3px; }
+.ht-content { flex:1; background:#f8fafc; border-radius:8px; padding:8px 12px; border-left:3px solid #0077B6; }
+.ht-content .ht-date { font-size:10px; color:#888; margin-bottom:3px; }
+.ht-content .ht-field { font-size:10px; color:#0077B6; font-weight:600; text-transform:uppercase; }
+.ht-content .ht-change { font-size:12px; color:#1a1a2e; margin-top:2px; }
+.ht-dot.dot-status { background:#00D2A0; }
+.ht-dot.dot-action { background:#FF9F43; }
+.ht-dot.dot-remark { background:#A855F7; }
+.ht-dot.dot-assignee { background:#00B4D8; }
+.ht-content.hc-status { border-left-color:#00D2A0; }
+.ht-content.hc-action { border-left-color:#FF9F43; }
+.ht-content.hc-remark { border-left-color:#A855F7; }
+.ht-content.hc-assignee { border-left-color:#00B4D8; }
 
 .badge { display:inline-block; padding:2px 7px; border-radius:10px; font-size:10px; font-weight:600; color:#fff; }
 .badge-120 { background:#FF6B6B; }
@@ -272,6 +311,17 @@ tr.row-untouched { background:#ffe0e0 !important; }
 </div>
 <div class="pagination" id="pagination"></div>
 
+<!-- History Modal -->
+<div class="history-overlay" id="historyOverlay" style="display:none" onclick="if(event.target===this)closeHistoryModal()">
+  <div class="history-modal">
+    <div class="history-modal-header">
+      <h3 id="historyTitle">Claim History</h3>
+      <button class="history-modal-close" onclick="closeHistoryModal()">&times;</button>
+    </div>
+    <div class="history-modal-body" id="historyBody"></div>
+  </div>
+</div>
+
 <script>
 // ===== Firebase Setup =====
 const firebaseConfig = {
@@ -288,7 +338,7 @@ const db = firebase.database();
 
 // Firebase refs — namespaced per month
 let currentMonthKey = '';
-let workedRef, actionRef, remarksRef, assigneeRef;
+let workedRef, actionRef, remarksRef, assigneeRef, historyRef;
 let months = [];
 let fbListeners = [];
 
@@ -301,6 +351,7 @@ function setFirebaseRefs(monthKey) {
   actionRef = db.ref(monthKey + '/actions');
   remarksRef = db.ref(monthKey + '/remarks');
   assigneeRef = db.ref(monthKey + '/assignees');
+  historyRef = db.ref(monthKey + '/history');
 }
 
 async function loadMonths() {
@@ -669,7 +720,7 @@ function renderTable() {
       <td><select class="action-select" data-id="${r.id}" onchange="saveAssignee(this)">
         ${['','AR','MB','NM','CS'].map(a=>`<option value="${a}"${(fbAssignees[r.id]||'')===a?' selected':''}>${a||'\\u2014'}</option>`).join('')}
       </select></td>
-      <td>${(wVal||aVal||rmVal||(fbAssignees[r.id]||''))?'<div class="prev-worked-badge">PREV WORKED</div>':''}
+      <td>${(wVal||aVal||rmVal||(fbAssignees[r.id]||''))?'<div class="prev-worked-badge" onclick="openHistoryModal(\''+r.id+'\')">PREV WORKED</div>':''}
       <select class="worked-select ${wClass}" data-id="${r.id}" onchange="saveWorked(this)">
         <option value=""${wVal===''?' selected':''}>-- Select --</option>
         <option value="completed"${wVal==='completed'?' selected':''}>Completed (Paid)</option>
@@ -689,9 +740,19 @@ function esc(s){return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g
 function escAttr(s){return s.replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;');}
 
 // ===== Firebase Save =====
+function logHistory(id, field, value) {
+  if(!value) return;
+  historyRef.child(id).push({
+    field: field,
+    value: value,
+    timestamp: new Date().toISOString()
+  });
+}
+
 function saveWorked(el){
   const id=el.dataset.id, val=el.value;
   workedRef.child(id).set(val||null);
+  logHistory(id, 'Status', val==='completed'?'Completed (Paid)':val==='inprogress'?'In Progress':'Cleared');
   // Update row styling immediately
   const row=el.closest('tr');
   const rec=DATA.find(r=>r.id===id);
@@ -699,10 +760,17 @@ function saveWorked(el){
   row.className=val==='completed'?'row-completed':val==='inprogress'?'row-inprogress':(untouched?'row-untouched':'');
   el.className='worked-select'+(val==='completed'?' status-completed':val==='inprogress'?' status-inprogress':'');
 }
-function saveAssignee(el){assigneeRef.child(el.dataset.id).set(el.value||null);}
-function saveAction(el){actionRef.child(el.dataset.id).set(el.value||null);}
+function saveAssignee(el){
+  assigneeRef.child(el.dataset.id).set(el.value||null);
+  logHistory(el.dataset.id, 'Assigned To', el.value||'Unassigned');
+}
+function saveAction(el){
+  actionRef.child(el.dataset.id).set(el.value||null);
+  logHistory(el.dataset.id, 'Action Taken', el.value);
+}
 function saveRemarks(el){
   remarksRef.child(el.dataset.id).set(el.value||null);
+  logHistory(el.dataset.id, 'Remarks', el.value);
   el.classList.toggle('has-text',!!el.value.trim());
 }
 
@@ -728,6 +796,76 @@ function exportCSV(){
   });
   const blob=new Blob([csv],{type:'text/csv'});const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='CT_OIC_WorkLog_'+new Date().toISOString().slice(0,10)+'.csv';a.click();
 }
+
+// ===== History Modal =====
+function openHistoryModal(claimId) {
+  const rec = DATA.find(r => r.id === claimId);
+  if (!rec) return;
+  document.getElementById('historyTitle').textContent = 'Claim #' + claimId + ' — Work History';
+
+  // Build claim info section
+  let html = '<div class="history-claim-info">';
+  html += '<div class="hci-item"><div class="hci-label">Patient ID</div><div class="hci-value">' + rec.patNum + '</div></div>';
+  html += '<div class="hci-item"><div class="hci-label">Carrier</div><div class="hci-value">' + esc(rec.carrier) + '</div></div>';
+  html += '<div class="hci-item"><div class="hci-label">Office</div><div class="hci-value">' + rec.clinic + '</div></div>';
+  html += '<div class="hci-item"><div class="hci-label">DOS</div><div class="hci-value">' + rec.dos + '</div></div>';
+  html += '<div class="hci-item"><div class="hci-label">Days Outstanding</div><div class="hci-value">' + rec.daysOut + ' days (' + rec.agingBucket + ')</div></div>';
+  html += '<div class="hci-item"><div class="hci-label">Insurance Est</div><div class="hci-value">$' + rec.insPayEst.toLocaleString(undefined,{minimumFractionDigits:2}) + '</div></div>';
+  if (rec.trackDate) {
+    html += '<div class="hci-item" style="grid-column:1/-1"><div class="hci-label">OD Tracking Note (' + rec.trackDate + ')</div><div class="hci-value" style="font-weight:400;font-size:11px;">' + esc(rec.trackNote) + '</div></div>';
+  }
+  html += '</div>';
+
+  // Current Firebase state
+  const curStatus = fbWorked[claimId] || '';
+  const curAction = fbActions[claimId] || '';
+  const curRemarks = fbRemarks[claimId] || '';
+  const curAssignee = fbAssignees[claimId] || '';
+  html += '<div class="history-current"><h4>Current Status</h4><div class="history-current-grid">';
+  html += '<div class="hc-item"><div class="hc-label">Status</div><div class="hc-val">' + (curStatus==='completed'?'Completed (Paid)':curStatus==='inprogress'?'In Progress':'Not Set') + '</div></div>';
+  html += '<div class="hc-item"><div class="hc-label">Assigned To</div><div class="hc-val">' + (curAssignee||'Unassigned') + '</div></div>';
+  html += '<div class="hc-item"><div class="hc-label">Action Taken</div><div class="hc-val">' + (curAction||'None') + '</div></div>';
+  html += '<div class="hc-item"><div class="hc-label">Remarks</div><div class="hc-val">' + (curRemarks?esc(curRemarks):'None') + '</div></div>';
+  html += '</div></div>';
+
+  // Timeline from Firebase history
+  html += '<div class="history-timeline"><h4>Activity Timeline</h4>';
+
+  // Fetch history from Firebase
+  historyRef.child(claimId).once('value').then(snap => {
+    const hist = snap.val();
+    if (!hist) {
+      html += '<div class="history-timeline-empty">No tracked changes yet. Future status, action, and remark changes will appear here.</div>';
+    } else {
+      // Convert to array and sort newest first
+      const entries = Object.values(hist).sort((a,b) => new Date(b.timestamp) - new Date(a.timestamp));
+      entries.forEach((e, i) => {
+        const dt = new Date(e.timestamp);
+        const dateStr = dt.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}) + ' ' + dt.toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'});
+        const fieldClass = e.field==='Status'?'status':e.field==='Action Taken'?'action':e.field==='Remarks'?'remark':'assignee';
+        const isLast = i === entries.length - 1;
+        html += '<div class="ht-entry"><div class="ht-dot-col"><div class="ht-dot dot-' + fieldClass + '"></div>' + (isLast?'':'<div class="ht-line"></div>') + '</div>';
+        html += '<div class="ht-content hc-' + fieldClass + '"><div class="ht-date">' + dateStr + '</div>';
+        html += '<div class="ht-field">' + esc(e.field) + '</div>';
+        html += '<div class="ht-change">' + esc(e.value) + '</div></div></div>';
+      });
+    }
+    html += '</div>';
+    document.getElementById('historyBody').innerHTML = html;
+  });
+
+  // Show modal immediately with claim info (timeline loads async)
+  html += '<div style="color:#999;font-size:12px;">Loading timeline...</div></div>';
+  document.getElementById('historyBody').innerHTML = html;
+  document.getElementById('historyOverlay').style.display = 'flex';
+}
+
+function closeHistoryModal() {
+  document.getElementById('historyOverlay').style.display = 'none';
+}
+
+// Close on Escape key
+document.addEventListener('keydown', e => { if(e.key==='Escape') closeHistoryModal(); });
 
 init();
 </script>
