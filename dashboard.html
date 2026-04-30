@@ -121,8 +121,11 @@ tr.row-untouched { background:#ffe0e0 !important; }
 .action-select { font-family:'Poppins',sans-serif; font-size:11px; padding:3px 6px; border:1px solid #ccc; border-radius:4px; width:100%; }
 .remarks-input { font-family:'Poppins',sans-serif; font-size:11px; padding:3px 6px; border:1px solid #ccc; border-radius:4px; width:100%; min-width:130px; }
 .remarks-input.has-text { border-color:#0077B6; background:#f0f8ff; }
-.prev-worked-badge { display:inline-block; font-size:9px; font-weight:600; background:#0077B6; color:#fff; padding:1px 5px; border-radius:3px; margin-bottom:2px; letter-spacing:.3px; cursor:pointer; transition:background .2s; }
-.prev-worked-badge:hover { background:#023E8A; }
+.prev-worked-badge { display:inline-block; font-size:9px; font-weight:600; background:#0077B6; color:#fff; padding:1px 5px; border-radius:3px; margin-bottom:2px; letter-spacing:.3px; }
+.history-btn { display:inline-flex; align-items:center; justify-content:center; width:28px; height:28px; border-radius:6px; border:none; cursor:pointer; font-size:16px; transition:all .2s; background:#eef2f7; color:#666; }
+.history-btn:hover { background:#0077B6; color:#fff; transform:scale(1.1); }
+.history-btn.has-history { background:#0077B6; color:#fff; }
+.history-btn.has-history:hover { background:#023E8A; }
 
 /* History Modal */
 .history-overlay { position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,.5); z-index:10000; display:flex; align-items:center; justify-content:center; }
@@ -440,6 +443,7 @@ const ACTIONS = [
 ];
 
 const COLS = [
+  {key:'_history', label:'', w:'36px'},
   {key:'agingBucket', label:'Aging', w:'65px'},
   {key:'daysOut', label:'Days', w:'50px'},
   {key:'patNum', label:'Patient ID', w:'105px'},
@@ -706,7 +710,9 @@ function renderTable() {
     const rmVal=fbRemarks[r.id]||'';
     const rowClass=wVal==='completed'?'row-completed':wVal==='inprogress'?'row-inprogress':(!r.trackNote.trim()?'row-untouched':'');
     const wClass=wVal==='completed'?'status-completed':wVal==='inprogress'?'status-inprogress':'';
+    const hasWork=!!(wVal||aVal||rmVal||(fbAssignees[r.id]||''));
     h+=`<tr class="${rowClass}">
+      <td style="text-align:center"><button class="history-btn${hasWork?' has-history':''}" onclick="openHistoryModal('${r.id}')" title="View claim history">&#128203;</button></td>
       <td><span class="badge ${badgeClass(r.agingBucket)}">${r.agingBucket}</span></td>
       <td>${r.daysOut}</td>
       <td>${r.patNum}</td>
@@ -720,7 +726,7 @@ function renderTable() {
       <td><select class="action-select" data-id="${r.id}" onchange="saveAssignee(this)">
         ${['','AR','MB','NM','CS'].map(a=>`<option value="${a}"${(fbAssignees[r.id]||'')===a?' selected':''}>${a||'\\u2014'}</option>`).join('')}
       </select></td>
-      <td>${(wVal||aVal||rmVal||(fbAssignees[r.id]||''))?`<div class="prev-worked-badge" onclick="openHistoryModal('${r.id}')">PREV WORKED</div>`:''}
+      <td>${hasWork?'<div class="prev-worked-badge">PREV WORKED</div>':''}
       <select class="worked-select ${wClass}" data-id="${r.id}" onchange="saveWorked(this)">
         <option value=""${wVal===''?' selected':''}>-- Select --</option>
         <option value="completed"${wVal==='completed'?' selected':''}>Completed (Paid)</option>
