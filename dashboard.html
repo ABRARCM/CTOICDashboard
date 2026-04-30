@@ -720,7 +720,7 @@ function renderTable() {
       <td><select class="action-select" data-id="${r.id}" onchange="saveAssignee(this)">
         ${['','AR','MB','NM','CS'].map(a=>`<option value="${a}"${(fbAssignees[r.id]||'')===a?' selected':''}>${a||'\\u2014'}</option>`).join('')}
       </select></td>
-      <td>${(wVal||aVal||rmVal||(fbAssignees[r.id]||''))?'<div class="prev-worked-badge" onclick="openHistoryModal(\''+r.id+'\')">PREV WORKED</div>':''}
+      <td>${(wVal||aVal||rmVal||(fbAssignees[r.id]||''))?`<div class="prev-worked-badge" onclick="openHistoryModal('${r.id}')">PREV WORKED</div>`:''}
       <select class="worked-select ${wClass}" data-id="${r.id}" onchange="saveWorked(this)">
         <option value=""${wVal===''?' selected':''}>-- Select --</option>
         <option value="completed"${wVal==='completed'?' selected':''}>Completed (Paid)</option>
