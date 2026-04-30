@@ -205,9 +205,12 @@ tr.row-untouched { background:#ffe0e0 !important; }
     <h1>CT Outstanding Insurance Claims</h1>
     <div class="subtitle"><span class="sync-dot sync-live"></span>Live Dashboard &mdash; 30+ Day Claims &mdash; <span id="reportDateLabel">Loading...</span></div>
   </div>
-  <div class="month-selector">
-    <label>Report Period:</label>
-    <select id="monthSelect" onchange="switchMonth(this.value)"></select>
+  <div style="display:flex;align-items:center;gap:12px;">
+    <div class="month-selector">
+      <label>Report Period:</label>
+      <select id="monthSelect" onchange="switchMonth(this.value)"></select>
+    </div>
+    <a href="performance.html" style="color:#fff;text-decoration:none;font-size:12px;font-weight:600;background:rgba(255,255,255,.15);padding:8px 16px;border-radius:10px;border:1px solid rgba(255,255,255,.1);transition:all .2s;">&#128202; Team Performance</a>
   </div>
   <img src="https://abrahealthgroup.com/wp-content/uploads/2022/09/Asset-48@4x-copy.png" alt="Abra Health">
 </div>
@@ -341,7 +344,7 @@ const db = firebase.database();
 
 // Firebase refs — namespaced per month
 let currentMonthKey = '';
-let workedRef, actionRef, remarksRef, assigneeRef, historyRef;
+let workedRef, actionRef, remarksRef, assigneeRef, historyRef, actionDatesRef;
 let months = [];
 let fbListeners = [];
 
@@ -355,6 +358,7 @@ function setFirebaseRefs(monthKey) {
   remarksRef = db.ref(monthKey + '/remarks');
   assigneeRef = db.ref(monthKey + '/assignees');
   historyRef = db.ref(monthKey + '/history');
+  actionDatesRef = db.ref(monthKey + '/actionDates');
 }
 
 async function loadMonths() {
@@ -755,9 +759,15 @@ function logHistory(id, field, value) {
   });
 }
 
+function getTodayStr() {
+  const d = new Date();
+  return (d.getMonth()+1)+'/'+d.getDate()+'/'+d.getFullYear();
+}
+
 function saveWorked(el){
   const id=el.dataset.id, val=el.value;
   workedRef.child(id).set(val||null);
+  if(val) actionDatesRef.child(id).set(getTodayStr());
   logHistory(id, 'Status', val==='completed'?'Completed (Paid)':val==='inprogress'?'In Progress':'Cleared');
   // Update row styling immediately
   const row=el.closest('tr');
@@ -772,6 +782,7 @@ function saveAssignee(el){
 }
 function saveAction(el){
   actionRef.child(el.dataset.id).set(el.value||null);
+  if(el.value) actionDatesRef.child(el.dataset.id).set(getTodayStr());
   logHistory(el.dataset.id, 'Action Taken', el.value);
 }
 function saveRemarks(el){
