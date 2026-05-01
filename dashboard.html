@@ -391,6 +391,22 @@ async function switchMonth(monthKey) {
   setFirebaseRefs(monthKey);
   // Reset state
   fbWorked = {}; fbActions = {}; fbRemarks = {}; fbAssignees = {};
+  prevMonthWorked = {}; prevMonthActions = {}; prevMonthRemarks = {}; prevMonthAssignees = {};
+  // Load previous month's Firebase data for PREV WORKED detection
+  const mIdx = months.findIndex(x => x.key === monthKey);
+  if (mIdx >= 0 && mIdx < months.length - 1) {
+    const prevKey = months[mIdx + 1].key;
+    const [pw, pa, pr, pas] = await Promise.all([
+      db.ref(prevKey + '/worked').once('value'),
+      db.ref(prevKey + '/actions').once('value'),
+      db.ref(prevKey + '/remarks').once('value'),
+      db.ref(prevKey + '/assignees').once('value'),
+    ]);
+    prevMonthWorked = pw.val() || {};
+    prevMonthActions = pa.val() || {};
+    prevMonthRemarks = pr.val() || {};
+    prevMonthAssignees = pas.val() || {};
+  }
   includeCarriers.clear(); excludeCarriers.clear();
   document.getElementById('includeSearch').value = '';
   document.getElementById('excludeSearch').value = '';
@@ -454,6 +470,8 @@ const COLS = [
   {key:'dos', label:'DOS', w:'85px'},
   {key:'carrier', label:'Carrier', w:'150px'},
   {key:'clinic', label:'Office', w:'85px'},
+  {key:'provider', label:'Provider', w:'140px'},
+  {key:'claimLevel', label:'Type', w:'65px'},
   {key:'insPayEst', label:'Ins Est', w:'75px', money:true},
   {key:'billedFee', label:'Billed', w:'75px', money:true},
   {key:'trackDate', label:'Last Tracked', w:'85px'},
@@ -476,6 +494,10 @@ let fbWorked = {};
 let fbActions = {};
 let fbRemarks = {};
 let fbAssignees = {};
+let prevMonthWorked = {};
+let prevMonthActions = {};
+let prevMonthRemarks = {};
+let prevMonthAssignees = {};
 
 async function init() {
   const firstMonth = await loadMonths();
@@ -527,7 +549,7 @@ function updateProgressBar() {
 
   let prevWorked = 0;
   recs.forEach(r => {
-    if(fbWorked[r.id]||fbActions[r.id]||fbRemarks[r.id]||fbAssignees[r.id]) prevWorked++;
+    if(fbWorked[r.id]||fbActions[r.id]||fbRemarks[r.id]||fbAssignees[r.id]||prevMonthWorked[r.id]||prevMonthActions[r.id]||prevMonthRemarks[r.id]||prevMonthAssignees[r.id]) prevWorked++;
   });
   document.getElementById('progressStats').innerHTML = `
     <span class="progress-stat"><span class="progress-dot dot-completed"></span> <b>${completed}</b> Completed (Paid)</span>
@@ -673,7 +695,7 @@ function applyFilters() {
     if(assignee!=='all'){const a=fbAssignees[r.id]||'';if(assignee===''&&a!=='')return false;if(assignee!==''&&a!==assignee)return false;}
     if(worked!=='all'){const w=fbWorked[r.id]||'';if(worked===''&&w!=='')return false;if(worked!==''&&w!==worked)return false;}
     if(history!=='all'){
-      const hasWork=!!(fbWorked[r.id]||fbActions[r.id]||fbRemarks[r.id]||fbAssignees[r.id]);
+      const hasWork=!!(fbWorked[r.id]||fbActions[r.id]||fbRemarks[r.id]||fbAssignees[r.id]||prevMonthWorked[r.id]||prevMonthActions[r.id]||prevMonthRemarks[r.id]||prevMonthAssignees[r.id]);
       if(history==='touched'&&!hasWork)return false;
       if(history==='untouched'&&hasWork)return false;
     }
@@ -715,14 +737,18 @@ function renderTable() {
     const rowClass=wVal==='completed'?'row-completed':wVal==='inprogress'?'row-inprogress':(!r.trackNote.trim()?'row-untouched':'');
     const wClass=wVal==='completed'?'status-completed':wVal==='inprogress'?'status-inprogress':'';
     const hasWork=!!(wVal||aVal||rmVal||(fbAssignees[r.id]||''));
+    const hadPrevWork=!!(prevMonthWorked[r.id]||prevMonthActions[r.id]||prevMonthRemarks[r.id]||prevMonthAssignees[r.id]);
+    const anyWork=hasWork||hadPrevWork;
     h+=`<tr class="${rowClass}">
-      <td style="text-align:center"><button class="history-btn${hasWork?' has-history':''}" onclick="openHistoryModal('${r.id}')" title="View claim history">&#128203;</button></td>
+      <td style="text-align:center"><button class="history-btn${anyWork?' has-history':''}" onclick="openHistoryModal('${r.id}')" title="View claim history">&#128203;</button></td>
       <td><span class="badge ${badgeClass(r.agingBucket)}">${r.agingBucket}</span></td>
       <td>${r.daysOut}</td>
       <td>${r.patNum}</td>
       <td>${r.dos}</td>
       <td style="font-size:11px">${esc(r.carrier)}</td>
       <td>${r.clinic}</td>
+      <td style="font-size:10px">${esc(r.provider||'')}</td>
+      <td><span style="font-size:10px;font-weight:600;color:${r.claimLevel==='Primary'?'#0077B6':r.claimLevel==='Secondary'?'#A855F7':'#999'}">${r.claimLevel||''}</span></td>
       <td class="money">$${r.insPayEst.toLocaleString(undefined,{minimumFractionDigits:2})}</td>
       <td class="money">$${r.billedFee.toLocaleString(undefined,{minimumFractionDigits:2})}</td>
       <td>${r.trackDate}</td>
@@ -730,7 +756,7 @@ function renderTable() {
       <td><select class="action-select" data-id="${r.id}" onchange="saveAssignee(this)">
         ${['','AR','MB','NM','CS'].map(a=>`<option value="${a}"${(fbAssignees[r.id]||'')===a?' selected':''}>${a||'\\u2014'}</option>`).join('')}
       </select></td>
-      <td>${hasWork?'<div class="prev-worked-badge">PREV WORKED</div>':''}
+      <td>${anyWork?'<div class="prev-worked-badge">PREV WORKED</div>':''}
       <select class="worked-select ${wClass}" data-id="${r.id}" onchange="saveWorked(this)">
         <option value=""${wVal===''?' selected':''}>-- Select --</option>
         <option value="completed"${wVal==='completed'?' selected':''}>Completed (Paid)</option>
@@ -804,11 +830,11 @@ function goPage(p){currentPage=p;renderTable();window.scrollTo({top:document.que
 
 // ===== Export =====
 function exportCSV(){
-  const headers=['Aging','Days','PatientID','DOS','Carrier','Office','InsEst','Billed','LastTracked','TrackingNote','AssignedTo','Status','ActionTaken','Remarks','PreviouslyWorked'];
+  const headers=['Aging','Days','PatientID','DOS','Carrier','Office','Provider','Type','InsEst','Billed','LastTracked','TrackingNote','AssignedTo','Status','ActionTaken','Remarks','PreviouslyWorked'];
   let csv=headers.join(',')+String.fromCharCode(10);
   filtered.forEach(r=>{
-    const pw=!!(fbWorked[r.id]||fbActions[r.id]||fbRemarks[r.id]||fbAssignees[r.id])?'Yes':'No';
-    const row=[r.agingBucket,r.daysOut,r.patNum,r.dos,'"'+r.carrier+'"',r.clinic,r.insPayEst,r.billedFee,r.trackDate,'"'+r.trackNote.replace(/"/g,'""')+'"',fbAssignees[r.id]||'',fbWorked[r.id]||'','"'+(fbActions[r.id]||'').replace(/"/g,'""')+'"','"'+(fbRemarks[r.id]||'').replace(/"/g,'""')+'"',pw];
+    const pw=!!(fbWorked[r.id]||fbActions[r.id]||fbRemarks[r.id]||fbAssignees[r.id]||prevMonthWorked[r.id]||prevMonthActions[r.id]||prevMonthRemarks[r.id]||prevMonthAssignees[r.id])?'Yes':'No';
+    const row=[r.agingBucket,r.daysOut,r.patNum,r.dos,'"'+r.carrier+'"',r.clinic,'"'+(r.provider||'')+'"',r.claimLevel||'',r.insPayEst,r.billedFee,r.trackDate,'"'+r.trackNote.replace(/"/g,'""')+'"',fbAssignees[r.id]||'',fbWorked[r.id]||'','"'+(fbActions[r.id]||'').replace(/"/g,'""')+'"','"'+(fbRemarks[r.id]||'').replace(/"/g,'""')+'"',pw];
     csv+=row.join(',')+String.fromCharCode(10);
   });
   const blob=new Blob([csv],{type:'text/csv'});const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='CT_OIC_WorkLog_'+new Date().toISOString().slice(0,10)+'.csv';a.click();
@@ -826,6 +852,8 @@ function openHistoryModal(claimId) {
   html += '<div class="hci-item"><div class="hci-label">Carrier</div><div class="hci-value">' + esc(rec.carrier) + '</div></div>';
   html += '<div class="hci-item"><div class="hci-label">Office</div><div class="hci-value">' + rec.clinic + '</div></div>';
   html += '<div class="hci-item"><div class="hci-label">DOS</div><div class="hci-value">' + rec.dos + '</div></div>';
+  html += '<div class="hci-item"><div class="hci-label">Provider</div><div class="hci-value">' + esc(rec.provider||'N/A') + '</div></div>';
+  html += '<div class="hci-item"><div class="hci-label">Type</div><div class="hci-value">' + (rec.claimLevel||'N/A') + '</div></div>';
   html += '<div class="hci-item"><div class="hci-label">Days Outstanding</div><div class="hci-value">' + rec.daysOut + ' days (' + rec.agingBucket + ')</div></div>';
   html += '<div class="hci-item"><div class="hci-label">Insurance Est</div><div class="hci-value">$' + rec.insPayEst.toLocaleString(undefined,{minimumFractionDigits:2}) + '</div></div>';
   if (rec.trackDate) {
@@ -833,36 +861,70 @@ function openHistoryModal(claimId) {
   }
   html += '</div>';
 
-  // Current Firebase state
+  // Previous month status (if exists)
+  const prevStatus = prevMonthWorked[claimId] || '';
+  const prevAction = prevMonthActions[claimId] || '';
+  const prevRemarks = prevMonthRemarks[claimId] || '';
+  const prevAssignee = prevMonthAssignees[claimId] || '';
+  if (prevStatus || prevAction || prevRemarks || prevAssignee) {
+    html += '<div class="history-current" style="border-left:4px solid #FF9F43;padding-left:16px;"><h4 style="color:#FF9F43;">Previous Month Work</h4><div class="history-current-grid">';
+    html += '<div class="hc-item"><div class="hc-label">Status</div><div class="hc-val">' + (prevStatus==='completed'?'Completed (Paid)':prevStatus==='inprogress'?'In Progress':'Not Set') + '</div></div>';
+    html += '<div class="hc-item"><div class="hc-label">Assigned To</div><div class="hc-val">' + (prevAssignee||'Unassigned') + '</div></div>';
+    html += '<div class="hc-item"><div class="hc-label">Action Taken</div><div class="hc-val">' + (prevAction||'None') + '</div></div>';
+    html += '<div class="hc-item"><div class="hc-label">Remarks</div><div class="hc-val">' + (prevRemarks?esc(prevRemarks):'None') + '</div></div>';
+    html += '</div></div>';
+  }
+
+  // Current month Firebase state
   const curStatus = fbWorked[claimId] || '';
   const curAction = fbActions[claimId] || '';
   const curRemarks = fbRemarks[claimId] || '';
   const curAssignee = fbAssignees[claimId] || '';
-  html += '<div class="history-current"><h4>Current Status</h4><div class="history-current-grid">';
+  html += '<div class="history-current"><h4>Current Month Status</h4><div class="history-current-grid">';
   html += '<div class="hc-item"><div class="hc-label">Status</div><div class="hc-val">' + (curStatus==='completed'?'Completed (Paid)':curStatus==='inprogress'?'In Progress':'Not Set') + '</div></div>';
   html += '<div class="hc-item"><div class="hc-label">Assigned To</div><div class="hc-val">' + (curAssignee||'Unassigned') + '</div></div>';
   html += '<div class="hc-item"><div class="hc-label">Action Taken</div><div class="hc-val">' + (curAction||'None') + '</div></div>';
   html += '<div class="hc-item"><div class="hc-label">Remarks</div><div class="hc-val">' + (curRemarks?esc(curRemarks):'None') + '</div></div>';
   html += '</div></div>';
 
-  // Timeline from Firebase history
+  // Timeline from Firebase history — load current + previous month
   html += '<div class="history-timeline"><h4>Activity Timeline</h4>';
 
-  // Fetch history from Firebase
-  historyRef.child(claimId).once('value').then(snap => {
-    const hist = snap.val();
-    if (!hist) {
+  // Find previous month key
+  const mIdx = months.findIndex(x => x.key === currentMonthKey);
+  const prevMonthKey = (mIdx >= 0 && mIdx < months.length - 1) ? months[mIdx + 1].key : null;
+
+  // Load both current and previous month history
+  const histPromises = [historyRef.child(claimId).once('value')];
+  if (prevMonthKey) histPromises.push(db.ref(prevMonthKey + '/history/' + claimId).once('value'));
+
+  Promise.all(histPromises).then(snaps => {
+    let allEntries = [];
+    // Current month history
+    const curHist = snaps[0].val();
+    if (curHist) {
+      Object.values(curHist).forEach(e => allEntries.push({...e, month: currentMonthKey}));
+    }
+    // Previous month history
+    if (snaps[1]) {
+      const prevHist = snaps[1].val();
+      if (prevHist) {
+        Object.values(prevHist).forEach(e => allEntries.push({...e, month: prevMonthKey}));
+      }
+    }
+
+    if (allEntries.length === 0) {
       html += '<div class="history-timeline-empty">No tracked changes yet. Future status, action, and remark changes will appear here.</div>';
     } else {
-      // Convert to array and sort newest first
-      const entries = Object.values(hist).sort((a,b) => new Date(b.timestamp) - new Date(a.timestamp));
-      entries.forEach((e, i) => {
+      allEntries.sort((a,b) => new Date(b.timestamp) - new Date(a.timestamp));
+      allEntries.forEach((e, i) => {
         const dt = new Date(e.timestamp);
         const dateStr = dt.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}) + ' ' + dt.toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'});
         const fieldClass = e.field==='Status'?'status':e.field==='Action Taken'?'action':e.field==='Remarks'?'remark':'assignee';
-        const isLast = i === entries.length - 1;
+        const isLast = i === allEntries.length - 1;
+        const monthLabel = e.month !== currentMonthKey ? ' <span style="font-size:9px;background:#FF9F43;color:#fff;padding:1px 4px;border-radius:3px;margin-left:4px;">PREV MONTH</span>' : '';
         html += '<div class="ht-entry"><div class="ht-dot-col"><div class="ht-dot dot-' + fieldClass + '"></div>' + (isLast?'':'<div class="ht-line"></div>') + '</div>';
-        html += '<div class="ht-content hc-' + fieldClass + '"><div class="ht-date">' + dateStr + '</div>';
+        html += '<div class="ht-content hc-' + fieldClass + '"><div class="ht-date">' + dateStr + monthLabel + '</div>';
         html += '<div class="ht-field">' + esc(e.field) + '</div>';
         html += '<div class="ht-change">' + esc(e.value) + '</div></div></div>';
       });
